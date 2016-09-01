@@ -1,0 +1,174 @@
+#!/usr/bin/python3
+
+from gi.repository import GLib
+
+import argparse
+import dbus
+import dbus.mainloop.glib
+
+def property_changed(property, value):
+	print("CallForwarding property %s changed to %s" % (property, value))
+
+def print_properties(cf):
+	properties = cf.GetProperties()
+
+	for p in properties:
+		if len(properties[p].__str__()) > 0:
+			print("%s call forwarding rule is: %s" % (p, properties[p]))
+		else:
+			print("%s call forwarding rule disabled" % (p))
+
+def parse_arguments():
+	"""Parses command-line arguments.
+	"""
+
+	parser = argparse.ArgumentParser(description="test-call-forwarding script")
+
+	parser.add_argument("-m",
+			"--modem",
+			dest="modem",
+			help="""Specifies the modem to run the
+			call-forwarding tests against""",
+			default=""
+			)
+	parser.add_argument("--noreply-num",
+			dest="noreply_num",
+			help="""Specify a forwarding number for
+			the no-reply condition""",
+			default="+134444",
+			)
+	parser.add_argument("--uncond-num",
+			dest="uncond_num",
+			help="""Specify an unconditional forwarding number""",
+			default="+155555",
+			)
+	parser.add_argument("--noreply-timeout",
+			dest="noreply_timeout",
+			help="""Specify a no-reply timeout""",
+			default=-1,
+			)
+
+	return parser.parse_args()
+
+
+def main(args):
+
+	path = ""
+
+	dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
+
+	bus = dbus.SystemBus()
+
+	manager = dbus.Interface(bus.get_object('org.ofono', '/'),
+							'org.ofono.Manager')
+
+	modems = manager.GetModems()
+
+	assert len(modems) >= 1
+
+	for modem in modems:
+		if modem[0] == args.modem:
+			path = args.modem
+
+	if path == "":
+		path = modems[0][0]
+
+	if args.noreply_timeout == -1:
+		noreply_timeout = dbus.UInt16(30)
+	else:
+		noreply_timeout = dbus.UInt16(args.noreply_timeout)
+
+	cf = dbus.Interface(bus.get_object('org.ofono', path),
+						'org.ofono.CallForwarding')
+
+	cf.connect_to_signal("PropertyChanged", property_changed)
+
+	print_properties(cf)
+
+	try:
+		cf.SetProperty("FoobarNoReplyTimeout", dbus.UInt16(19))
+	except dbus.DBusException as e:
+		print("Unable to set timeout - Good")
+
+	try:
+		cf.SetProperty("VoiceNotReachableTimeout", dbus.UInt16(19))
+	except dbus.DBusException as e:
+		print("Unable to set timeout - Good")
+
+	try:
+		cf.SetProperty("VoiceNoReplyTimeout", dbus.UInt16(19))
+	except dbus.DBusException as e:
+		print("Unable to set timeout - Good")
+
+	try:
+		cf.SetProperty("DataNoReplyTimeout", dbus.UInt16(19))
+	except dbus.DBusException as e:
+		print("Unable to set timeout - Good")
+
+	try:
+		cf.SetProperty("FaxNoReplyTimeout", dbus.UInt16(19))
+	except dbus.DBusException as e:
+		print("Unable to set timeout - Good")
+
+	try:
+		cf.SetProperty("SmsNoReplyTimeout", dbus.UInt16(19))
+	except dbus.DBusException as e:
+		print("Unable to set timeout - Good")
+
+	try:
+		cf.SetProperty("VoiceNoReply", "")
+	except dbus.DBusException as e:
+		print("Unable to erase voice no reply rule - Bad")
+
+	try:
+		cf.SetProperty("VoiceNoReply", args.noreply_num)
+	except dbus.DBusException as e:
+		print("Unable to register voice no reply rule - Bad")
+
+	try:
+		cf.SetProperty("VoiceNoReplyTimeout", noreply_timeout)
+	except dbus.DBusException as e:
+		print("Unable to set voice no reply timeout - Bad")
+
+	properties = cf.GetProperties()
+
+	print(properties["VoiceNoReply"])
+	print(properties["VoiceNoReplyTimeout"])
+
+	try:
+		cf.SetProperty("VoiceUnconditional", args.uncond_num)
+	except dbus.DBusException as e:
+		print("Unable to set Voice Unconditional - Bad")
+
+	properties = cf.GetProperties()
+
+	print(properties["VoiceUnconditional"])
+
+	try:
+		cf.DisableAll("foobar")
+	except dbus.DBusException as e:
+		print("Unable to delete invalids - Good")
+
+	try:
+		cf.DisableAll("conditional")
+	except dbus.DBusException as e:
+		print("Unable to delete all conditional - Bad")
+
+	properties = cf.GetProperties()
+
+	print(properties["VoiceNoReply"])
+	print(properties["VoiceNoReplyTimeout"])
+
+	try:
+		cf.DisableAll("all")
+	except dbus.DBusException as e:
+		print("Unable to delete all conditional - Bad")
+
+	print(properties["VoiceUnconditional"])
+
+	mainloop = GLib.MainLoop()
+	mainloop.run()
+
+if __name__ == "__main__":
+	args = parse_arguments()
+	main(args)
